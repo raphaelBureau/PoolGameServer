@@ -75,6 +75,9 @@ io.on("connection", (socket) => {
     socket.on("updateTrajectory", (arg) => {
         socket.to(games["pool"]["playing"][socket.id]).volatile.emit("trajectory", arg);
     });
+    socket.on("sendMessage", (arg) => {
+        socket.to(games["pool"]["playing"][socket.id]).emit("sendMessage", arg);
+    });
 });
 
 httpServer.listen(3000);
