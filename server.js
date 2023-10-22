@@ -75,9 +75,34 @@ io.on("connection", (socket) => {
     socket.on("updateTrajectory", (arg) => {
         socket.to(games["pool"]["playing"][socket.id]).volatile.emit("trajectory", arg);
     });
-    socket.on("sendMessage", (arg) => {
-        socket.to(games["pool"]["playing"][socket.id]).emit("sendMessage", arg);
+
+    socket.on("sendMessage", (message) => {
+        //message format, message.nom, message.text, message.channel
+        messageObj = JSON.parse(message);
+        if(messageObj.hasOwnProperty("nom") && messageObj.hasOwnProperty("text") && messageObj.hasOwnProperty("channel")) { //validity check
+            switch(messageObj.channel) {
+                case 0:
+                io.emit("sendMessage", message); //all, global chat
+                break;
+                case 1:
+                socket.to(games["pool"]["playing"][socket.id]).emit("sendMessage", message); //game chat
+                break;
+                default:
+                socket.to(messageObj.channel).emit("sendMessage", message);
+                break;
+            }
+        }
+        else{
+            console.log("invalid message from " + socket.id);
+        } 
     });
+    socket.on("joinChannel", (channel) => {
+        socket.join(channel);
+    });
+    socket.on("leaveChannel", (channel) => {
+        socket.leave(channel);
+    });
+
 });
 
 httpServer.listen(3000);
