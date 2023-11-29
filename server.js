@@ -27,12 +27,7 @@ io.on("connection", (socket) => {
     socket.emit("connected", "args");
 
     socket.on("disconnect", (reason) => {
-        if (queue.forEach((id) => {if(id == socket.id){
-            return true;
-        }})) {
-
-            delete queue[queue.indexOf(socket.id)];
-        }
+        if(playerInfoList[socket.id] != undefined) {
         if (games["pool"]["playing"].hasOwnProperty(socket.id)) {
 
             let id = games["pool"]["playing"][socket.id];
@@ -42,42 +37,49 @@ io.on("connection", (socket) => {
             delete games["pool"]["playing"][id];
             delete games["pool"]["playing"][socket.id];
 
-            console.log("Left game, player: " + socket.id + " , disconnecting: " + id);
+            console.log("Left game player: " + playerInfoList[socket.id].gamertag +" ,id: " + socket.id + " , disconnecting: " + id);
+            delete playerInfoList[socket.id];
         }
-    });
+        else {
+            if (queue[playerInfoList[socket.id].lobby] == socket.id)
+            console.log("Left queue player: " + playerInfoList[socket.id].gamertag +" ,id: " + socket.id + " , queue: " + '"' + playerInfoList[socket.id].lobby + '"');
+                delete queue[playerInfoList[socket.id].lobby];
+                delete playerInfoList[socket.id];
+        }
+}});
 
     socket.on("joinGame", (userInfo) => {
         //validation
-        if(/^[\[|\{](\s|.*|\w)*[\]|\}]$/.test(userInfo))  {
-        console.log(userInfo);
-        userInfo = JSON.parse(userInfo);
-        if(userInfo.hasOwnProperty("id") && userInfo.hasOwnProperty("gamertag") && userInfo.hasOwnProperty("img")) {
-            if(!userInfo.hasOwnProperty("lobby")) {
-                userInfo.lobby = "";
+        if (/^[\[|\{](\s|.*|\w)*[\]|\}]$/.test(userInfo)) {
+            console.log("new User: " + userInfo);
+            userInfo = JSON.parse(userInfo);
+            if (userInfo.hasOwnProperty("id") && userInfo.hasOwnProperty("gamertag") && userInfo.hasOwnProperty("img")) {
+                if (!userInfo.hasOwnProperty("lobby")) {
+                    userInfo.lobby = "";
+                }
+                playerInfoList[socket.id] = userInfo;
+                if (queue[userInfo.lobby] != undefined) {
+
+                    let p2Id = queue[userInfo.lobby];
+
+                    games["pool"]["playing"][p2Id] = socket.id; //player 1
+                    games["pool"]["playing"][socket.id] = p2Id; //player 2
+
+                    socket.to(p2Id).emit("gameStart", "1" + JSON.stringify(playerInfoList[socket.id])); //player1
+                    socket.emit("gameStart", "0" + JSON.stringify(playerInfoList[p2Id])); //player2
+
+                    console.log("Match Found p1: " + p2Id + " p2: " + socket.id);
+                    delete queue[userInfo.lobby];
+                }
+                else {
+                    queue[userInfo.lobby] = socket.id; //waiting for players
+                    console.log("Waiting: " + socket.id + ", custom lobby: " + '"' + userInfo.lobby + '"' + ", total waiting: " + Object.keys(queue).length + ", total playing: " + (Object.keys(queue).length + Object.keys(games["pool"]["playing"]).length));
+                }
             }
-            playerInfoList[socket.id] = JSON.stringify(userInfo);
-        if (queue[userInfo.lobby] != undefined) {
-
-            let p2Id = queue[userInfo.lobby];
-
-            games["pool"]["playing"][p2Id] = socket.id; //player 1
-            games["pool"]["playing"][socket.id] = p2Id; //player 2
-
-            socket.to(p2Id).emit("gameStart", "1" + playerInfoList[socket.id]); //player1
-            socket.emit("gameStart", "0" + playerInfoList[p2Id]); //player2
-
-            console.log("Match Found p1: " + p2Id + " p2: " + socket.id);
-            delete queue[userInfo.lobby];
         }
         else {
-            queue[userInfo.lobby] = socket.id; //waiting for players
-            console.log("Waiting: " + socket.id + ", custom lobby: " + '"' +userInfo.lobby + '"' + ", total waiting: " + Object.keys(queue).length + ", total playing: " + (Object.keys(queue).length + Object.keys(games["pool"]["playing"]).length));
+            console.log("invalid playerInfo from: " + socket.id + " info: " + userInfo)
         }
-    }
-}
-else{
-    console.log("invalid playerInfo from: " + socket.id + " info: " + userInfo)
-}
     })
     socket.on("sendPos", (arg) => {
         socket.to(games["pool"]["playing"][socket.id]).volatile.emit("positions", arg);
@@ -93,26 +95,29 @@ else{
     socket.on("updateTrajectory", (arg) => {
         socket.to(games["pool"]["playing"][socket.id]).volatile.emit("trajectory", arg);
     });
+    socket.on("gameOver", (status) => {
+        console.log("gameEnded player: " + playerInfoList[socket.id].gamertag + " , id: " + socket.id + " , won: " + status);
+     });
 
     socket.on("sendMessage", (message) => {
         //message format, message.nom, message.text, message.channel
         let messageObj = JSON.parse(message);
-        if(messageObj.hasOwnProperty("nom") && messageObj.hasOwnProperty("text") && messageObj.hasOwnProperty("channel")) { //validity check
-            switch(messageObj.channel) {
+        if (messageObj.hasOwnProperty("nom") && messageObj.hasOwnProperty("text") && messageObj.hasOwnProperty("channel")) { //validity check
+            switch (messageObj.channel) {
                 case 0:
-                io.emit("sendMessage", message); //all, global chat
-                break;
+                    io.emit("sendMessage", message); //all, global chat
+                    break;
                 case 1:
-                socket.to(games["pool"]["playing"][socket.id]).emit("sendMessage", message); //game chat
-                break;
+                    socket.to(games["pool"]["playing"][socket.id]).emit("sendMessage", message); //game chat
+                    break;
                 default:
-                socket.to(messageObj.channel).emit("sendMessage", message);
-                break;
+                    socket.to(messageObj.channel).emit("sendMessage", message);
+                    break;
             }
         }
-        else{
+        else {
             console.log("invalid message from " + socket.id);
-        } 
+        }
     });
     socket.on("joinChannel", (channel) => {
         socket.join(channel);
